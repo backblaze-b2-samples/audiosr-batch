@@ -12,6 +12,28 @@ It's a concrete demonstration of **write amplification at scale**: every compres
 - Surface the **storage-amplification** story (original → enhanced bytes) as a live dashboard metric
 - Pair each original with its enhanced rendition in a scoped **Audio Library**, both playable inline
 
+## What it looks like
+
+**Dashboard** — files-enhanced and storage-amplification metrics, a 7-day enhanced-output chart, and a recent-enhancements table.
+
+![Dashboard with files-enhanced and storage-amplification metrics, a 7-day output-volume chart, and recent enhancements](docs/images/dashboard.png)
+
+**Enhancements** — the job list where you create, run, and track each AudioSR super-resolution run, with per-job sample rate and amplification.
+
+![Enhancements job table listing completed super-resolution runs](docs/images/enhancements.png)
+
+**Enhancement detail** — a single job expanded: original vs. enhanced 48 kHz players, plus full provenance — model, device, params, and the B2 object keys.
+
+![Enhancement job detail dialog showing audio players and B2 provenance](docs/images/enhancement-detail.png)
+
+**Audio Library** — each ingested original paired with its enhanced 48 kHz rendition, both playable inline and downloadable, grouped by collection.
+
+![Audio Library pairing each original with its enhanced 48 kHz rendition](docs/images/library.png)
+
+**Upload** — drag-and-drop audio ingest (MP3 / WAV / OGG) into a named collection under `originals/` in B2.
+
+![Upload page with a collection field and a drag-and-drop audio dropzone](docs/images/upload.png)
+
 ## Architecture at a glance
 
 - **apps/web/** — Next.js 16 + React 19 + Tailwind v4 + shadcn/ui dashboard
