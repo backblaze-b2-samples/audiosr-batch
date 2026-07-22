@@ -1,174 +1,99 @@
-<!-- last_verified: 2026-07-15 -->
-# Vibe Coding Starter Kit
+<!-- last_verified: 2026-07-22 -->
+# AudioSR Batch
 
-Stop wiring boilerplate and start building. This open-source starter kit gives vibe coders and AI coding agents a production-ready foundation — a full-stack TypeScript + Python template with a pre-built dashboard UI, file upload system, and **[Backblaze B2](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-oss-start)** cloud storage already integrated. Save thousands of tokens on setup prompts, skip the "build me a dashboard from scratch" loop, and go straight to building your app's unique features.
+Batch **audio super-resolution** on [Backblaze B2](https://www.backblaze.com/cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-audiosr-batch). Ingest large libraries of degraded audio — 8–22 kHz call recordings, legacy field tapes, low-bitrate music — run the open-source [`versatile_audio_super_resolution`](https://github.com/haoheliu/versatile_audio_super_resolution) (AudioSR) model **locally** to reconstruct missing high-frequency content, and write a full-quality **48 kHz WAV** rendition plus a JSON metadata sidecar back to B2 alongside the original.
 
-**What you get out of the box:**
-- Full-stack dashboard UI (Next.js 16 + React 19 + Tailwind v4 + shadcn/ui)
-- File upload with drag-and-drop, progress tracking, and metadata extraction
-- File browser with preview, download, and delete
-- FastAPI backend with strict layered architecture and structural tests
-- Agent-optimized docs — your AI coding agent can read the repo and start contributing immediately
+It's a concrete demonstration of **write amplification at scale**: every compressed original expands into a full-quality WAV (typically 5–10× larger) plus a sidecar, so a 1 TB archive can become 5–10 TB in B2. **B2 is the single storage layer** — accessed via the S3-compatible API with a custom user-agent and standardized `B2_*` env vars. No second API key is required: AudioSR runs on-device, so only B2 credentials are needed.
 
-## What it looks like
+**What it does:**
+- Ingest audio (MP3 / WAV / OGG) into B2 under `originals/<collection>/`
+- Run AudioSR super-resolution jobs — create → run → track → delete, with live status
+- Write the enhanced 48 kHz WAV + a JSON sidecar to `enhanced/<collection>/`
+- Surface the **storage-amplification** story (original → enhanced bytes) as a live dashboard metric
+- Pair each original with its enhanced rendition in a scoped **Audio Library**, both playable inline
 
-**Dashboard** — stats, upload activity, and recent uploads at a glance:
+## Architecture at a glance
 
-![Dashboard view showing stat cards, upload activity chart, and recent uploads table](docs/images/b2-starterkit-dashboard1.png)
+- **apps/web/** — Next.js 16 + React 19 + Tailwind v4 + shadcn/ui dashboard
+- **services/api/** — FastAPI backend, strict layered architecture (`types → config → repo → service → runtime`)
+- **packages/shared/** — shared TypeScript types mirroring the Pydantic models
+- **Backblaze B2** — originals, enhanced renditions, JSON sidecars, and job manifests all live here (no application database)
 
-**File browser** — tree view with preview, download, and delete:
-
-![File browser view showing a tree of files with hover actions](docs/images/b2-starterkit-fileview2.png)
-
-## Agent-First Architecture
-
-This repo is optimized for coding agents. Use the template, point your agent at it, and start building.
-
-The structure follows the principle that **repository knowledge is the system of record**. Anything an agent can't access in-context doesn't exist — so everything it needs to reason about the codebase is versioned, co-located, and discoverable from the repo itself.
-
-### How it works
-
-**[AGENTS.md](AGENTS.md) is the single source of truth for all coding agents.** A ~100 line entry point gives agents the repository layout, architectural invariants, commands, conventions, and pointers to deeper docs. Agent-specific files (CLAUDE.md, etc.) are thin pointers back to AGENTS.md.
-
-**Architecture is enforced mechanically, not by convention.** Layering rules, import boundaries, file size limits, and SDK containment are verified by structural tests and lints that run on every change. When rules are enforceable by code, agents follow them reliably.
-
-**The knowledge base is structured for progressive disclosure:**
-
-```
-AGENTS.md              Single source of truth — layout, invariants, commands, conventions
-ARCHITECTURE.md        System layout, layering rules, data flows
-docs/
-  features/            Feature docs (inputs, outputs, flows, edge cases)
-  app-workflows.md     User journeys
-  dev-workflows.md     Engineering workflows and testing
-  SECURITY.md          Security principles
-  RELIABILITY.md       Reliability expectations
-  exec-plans/          Execution plans and tech debt tracker
-```
-
-### Key design decisions
-
-| Principle | Implementation |
-|-----------|---------------|
-| Give agents a single source of truth | AGENTS.md ~100 lines — layout, invariants, commands, conventions |
-| Enforce invariants mechanically | Structural tests + ruff + ESLint verify boundaries |
-| DRY documentation | Each fact lives in one place; no redundant files to drift |
-| Strict layered architecture | `types -> config -> repo -> service -> runtime`, enforced by tests |
-| Prefer boring, composable libraries | stdlib logging over frameworks, Pydantic over ad-hoc validation |
-| Contain external SDKs | `boto3` only in `repo/` layer — verified by structural test |
-| Keep files agent-sized | 300-line limit per file, enforced by test |
-| Docs updated with code | Same-PR requirement prevents documentation rot |
-| Structured observability | JSON logging, `/metrics` endpoint, request tracing |
-
-This approach draws from [OpenAI's experience building with Codex](https://openai.com/index/harness-engineering/): agents work best in environments with strict boundaries, predictable structure, and progressive context disclosure.
+The AudioSR model is wrapped in `services/api/app/repo/audiosr_engine.py` and lazy-imported, so the API boots and the test suite run without the heavy ML stack installed.
 
 ## Quick Start
 
-You need: Node.js >= 20, pnpm >= 9, Python >= 3.11, and a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-oss-start)**.
+You need: Node.js >= 20, pnpm >= 9, Python >= 3.11, and a free **[Backblaze B2 account](https://www.backblaze.com/sign-up/ai-cloud-storage?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-audiosr-batch)**.
 
-### Start a new project
-
-**Option 1: GitHub Template (recommended)**
-
-Click the green **"Use this template"** button at the top of this repo, name your project, then:
-
-```bash
-git clone https://github.com/yourorg/my-cool-app.git
-cd my-cool-app
-```
-
-**Option 2: Clone and reinitialize**
-
-```bash
-git clone https://github.com/backblaze-b2-samples/vibe-coding-starter-kit.git my-cool-app
-cd my-cool-app
-rm -rf .git
-git init
-git add .
-git commit -m "Initial commit from vibe-coding-starter-kit"
-```
-
-Either way you get a clean project with no upstream history — ready to push to your own repo and point your agent at it.
-
-### Setup
-
-**1. Install dependencies**
+### 1. Install dependencies
 
 ```bash
 pnpm install
 ```
 
-**2. Set up the backend**
+### 2. Set up the backend
 
 ```bash
 cd services/api
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+# Heavy ML stack for actually running enhancements (torch + AudioSR). It is
+# SEPARATE so the app boots and tests run without it. Install it when you want
+# to run the pipeline:
+pip install -r requirements-ml.txt
 cd ../..
 ```
 
-**3. Add your B2 credentials**
+> The first enhancement run downloads the ~2 GB AudioSR "basic" checkpoint once
+> from the public HuggingFace hub (keyless), then caches it. CPU works for a
+> short clip; the engine auto-detects **CUDA → CPU** at runtime and defaults to
+> CPU (Apple MPS is skipped by default — set `AUDIOSR_DEVICE=mps` to opt in). No
+> GPU is ever required.
 
-Set up your local `.env`:
+### 3. Add your B2 credentials
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` in your editor and keep it visible. Then head to the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-oss-start) and:
+Open `.env`, then head to the [Backblaze B2 dashboard](https://secure.backblaze.com/b2_buckets.htm?utm_source=github&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-audiosr-batch) and:
 
-1. **Create a bucket.** B2 will show two values — paste each into `.env`:
-   - **Bucket Unique Name** → `B2_BUCKET_NAME`
-   - **Endpoint** → `B2_ENDPOINT`
-2. **Create an application key** with `Read and Write` permission. B2 will show two values — paste each into `.env`:
-   - **keyID** → `B2_KEY_ID`
+1. **Create a bucket.** Note its **Endpoint** — the region slug in it goes to `B2_REGION` (an endpoint of `s3.us-west-004.backblazeb2.com` → `B2_REGION=us-west-004`). The bucket's unique name goes to `B2_BUCKET_NAME`.
+2. **Create an application key** with `Read and Write` permission:
+   - **keyID** → `B2_APPLICATION_KEY_ID`
    - **applicationKey** → `B2_APPLICATION_KEY` *(only shown once — paste it now)*
 
-> Want a walkthrough? See the docs for [creating a bucket](https://www.backblaze.com/docs/cloud-storage-create-and-manage-buckets) and [creating app keys](https://www.backblaze.com/docs/cloud-storage-create-and-manage-app-keys).
+`B2_PUBLIC_URL_BASE` is optional (public buckets only); the app serves audio via short-lived presigned URLs regardless.
 
-**4. Run it**
+### 4. Run it
 
 ```bash
 pnpm dev
 ```
 
-That's it. Frontend at `localhost:3000`, API at `localhost:8000`. Upload a file and see it working. Interactive API docs (Swagger UI) are at `localhost:8000/docs`, with ReDoc at `/redoc`.
+Frontend at `localhost:3000`, API at `localhost:8000`. Upload a **short** audio clip on the Upload page, then create an enhancement on the Enhancements page and watch it run. Interactive API docs (Swagger UI) are at `localhost:8000/docs`.
 
-`pnpm dev` runs `pnpm doctor` first — a preflight check that catches the common setup gotchas (wrong Node/Python version, missing venv, missing or placeholder `.env`, ports already taken) and tells you exactly how to fix each one. Run it standalone any time with `pnpm doctor`.
-
-## Building Your App
-
-When you adapt this kit for a new app, keep the shared scaffolding and only swap out what's app-specific:
-
-- **Keep** the UI kit (`apps/web/src/components/ui/` + design tokens in `globals.css` + `/design`).
-- **Keep** the File Explorer (`/files`) and Upload (`/upload`) pages and their sidebar nav entries — they're the reusable B2-backed surface.
-- **Adapt** the Dashboard (`/`) to your use case — replace the default stats, chart, and recent uploads with metrics that reflect what your app actually does.
-- **Rebrand** by editing a single file: `apps/web/src/lib/app-config.ts` holds the app name and description (`APP_NAME`, `APP_DESCRIPTION`). Changing them there updates the page title, sidebar, and breadcrumb everywhere — no other files to touch.
-
-Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AGENTS.md#2-building-on-this-starter-kit).
+`pnpm dev` runs `pnpm doctor` first — a preflight check for the common setup gotchas (wrong Node/Python version, missing venv, missing or placeholder `.env`, busy ports).
 
 ## Core Features
 
-- [File Upload](docs/features/file-upload.md) — drag-and-drop upload with real-time progress
-- [File Browser](docs/features/file-browser.md) — list, preview, download, delete files
-- [Dashboard](docs/features/dashboard.md) — stats cards, upload chart, recent uploads
-- [Metadata Extraction](docs/features/metadata-extraction.md) — image dimensions, EXIF, PDF info, checksums
-- [Design System](docs/design-system.md) — tokens, primitives, AI elements, the blaze generating loader, and inline `ErrorState` / `EmptyState` patterns. Live preview at `/design`.
-- Inline error handling — fetch failures surface *what's wrong* (API offline, 401, 5xx) and offer a Retry, instead of silently rendering empty state.
-- Single-source config — one `.env` at the repo root powers both API and web app, validated at startup so misconfig fails fast with a readable message.
-- Centralized data layer — every fetch goes through TanStack Query hooks in `apps/web/src/lib/queries.ts`; cache invalidation is one call after a mutation.
-- Structural tests — verify layering rules, import boundaries, SDK containment, file size limits
-- Structured JSON logging — every request traced with `request_id` and timing
-- `/health` endpoint — B2 connectivity check
-- `/metrics` endpoint — Prometheus-format counters (request count, latency, uploads)
-- `/docs` + `/redoc` — auto-generated interactive API docs (toggle off in prod with `ENABLE_DOCS=false`)
-- Per-IP rate limiting and magic-byte upload validation — see [SECURITY.md](docs/SECURITY.md)
+- [Audio Enhancement](docs/features/audio-enhancement.md) — the AudioSR super-resolution run + device rule
+- [Enhancement Jobs](docs/features/enhancement-jobs.md) — the primary entity: create → run → track → delete
+- [Audio Library](docs/features/audio-library.md) — scoped explorer pairing each original with its enhanced rendition
+- [Dashboard](docs/features/dashboard.md) — files enhanced, storage amplification, bandwidth gain, jobs by status
+- [Audio Ingest (Upload)](docs/features/file-upload.md) — drag-and-drop audio upload into `originals/`
+- [File Browser](docs/features/file-browser.md) — full-bucket explorer (coexists with the scoped Library)
+- [Metadata Extraction](docs/features/metadata-extraction.md) — audio sidecar (sample rates, duration, model) + generic checksums
+- [Design System](docs/design-system.md) — tokens, primitives, error/empty states. Live preview at `/design`.
+
+Also included: inline error handling, single-source `.env` config validated at startup, a centralized TanStack Query data layer, structural tests, structured JSON logging, `/health` and `/metrics` endpoints, per-IP rate limiting, and magic-byte upload validation — see [SECURITY.md](docs/SECURITY.md).
 
 ## Tech Stack
 
 - TypeScript, Next.js 16, React 19, Tailwind v4, shadcn/ui, Recharts
 - TanStack Query — caching, dedup, retry, stale-while-revalidate for every fetch
-- Python 3.11+, FastAPI, boto3, Pydantic v2, Pillow, PyPDF2
+- Python 3.11+, FastAPI, boto3, Pydantic v2
+- **AudioSR** (`versatile_audio_super_resolution`), PyTorch, soundfile — local, on-device audio super-resolution
 - Backblaze B2 (S3-compatible object storage)
 - pnpm workspaces (monorepo)
 
@@ -185,7 +110,7 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 | `pnpm test:web` | Run frontend unit tests (vitest) |
 | `pnpm test:api` | Run backend tests |
 | `pnpm check:structure` | Verify layering rules |
-| `pnpm test:e2e` | Playwright e2e tests (run `pnpm --filter @vibe-coding-starter-kit/web exec playwright install chromium` once first) |
+| `pnpm test:e2e` | Playwright e2e tests (run `pnpm --filter @audiosr-batch/web exec playwright install chromium` once first) |
 
 ## Documentation Map
 
@@ -193,17 +118,12 @@ Full contract and rationale: [AGENTS.md §2 — Building on This Starter Kit](AG
 |-----|---------|
 | [AGENTS.md](AGENTS.md) | Agent table of contents — start here |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System layout, layering, data flows |
-| [docs/features/](docs/features/) | Feature docs (upload, browser, dashboard, metadata) |
-| [docs/design-system.md](docs/design-system.md) | Design tokens, primitives, AI elements, loader, error/empty states |
+| [docs/features/](docs/features/) | Feature docs (enhancement, jobs, library, dashboard, ingest, browser, metadata) |
 | [docs/app-workflows.md](docs/app-workflows.md) | User journeys |
 | [docs/dev-workflows.md](docs/dev-workflows.md) | Engineering workflows and testing |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security principles |
 | [docs/RELIABILITY.md](docs/RELIABILITY.md) | Reliability expectations |
 | [docs/exec-plans/](docs/exec-plans/) | Execution plans and tech debt tracker |
-
-## Contributing
-
-Start with [AGENTS.md](AGENTS.md). It's the map — everything else is discoverable from there.
 
 ## License
 

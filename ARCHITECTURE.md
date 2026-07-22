@@ -4,19 +4,22 @@
 ## Components
 
 - **apps/web/** — Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
-  - Dashboard with stats, upload chart, recent uploads
-  - File upload with drag-and-drop, progress tracking
-  - File browser with preview, download, delete
+  - Dashboard with enhancement metrics (files enhanced, storage amplification, bandwidth gain, jobs by status), enhanced-output volume chart, recent enhancements
+  - Enhancements (`/jobs`): create / run / track / delete super-resolution jobs
+  - Audio Library (`/library`): scoped explorer pairing originals with enhanced renditions, inline audio players
+  - Audio upload with drag-and-drop, progress tracking
+  - Full-bucket file browser with preview, download, delete
   - Dark mode via `next-themes`
 - **services/api/** — FastAPI backend (layered architecture)
-  - REST API for file upload, listing, deletion
+  - REST API for audio upload, enhancement jobs, library, listing, deletion
   - B2 S3 integration via boto3
-  - File metadata extraction (images, PDFs)
+  - **AudioSR super-resolution engine** (`repo/audiosr_engine.py`) — local, on-device, lazy-imported
+  - B2-backed job persistence (`repo/job_store.py`) — no application database
   - Health check endpoint with B2 connectivity verification
   - Structured JSON logging with request tracing
   - Prometheus-format metrics endpoint
 - **packages/shared/** — TypeScript type definitions
-  - Mirrors Pydantic models from the API
+  - Mirrors Pydantic models from the API (incl. `EnhancementJob`, `LibraryTrack`, `EnhancementStats`)
   - Consumed by `apps/web/` as workspace dependency
 
 ## Backend Layering
@@ -49,13 +52,36 @@ runtime/   FastAPI routes — calls service, never repo directly
 services/api/
   main.py                  App entrypoint, middleware, router registration
   app/
-    types/                 Pydantic models (FileMetadata, UploadStats, etc.)
-    config/                Settings loaded from environment
-    repo/                  B2 S3 client (data access layer)
-    service/               Business logic (upload, files, metadata)
-    runtime/               FastAPI route handlers
-  tests/                   pytest tests (structural + integration)
+    types/                 Pydantic models (FileMetadata, EnhancementJob, LibraryTrack, ...)
+    config/                Settings loaded from environment (B2_REGION → endpoint property)
+    repo/                  B2 S3 client + AudioSR engine + B2-backed job store (data access)
+    service/               Business logic (upload, files, metadata, jobs, library)
+    runtime/               FastAPI route handlers (upload, files, jobs, health, metrics)
+  tests/                   pytest tests (structural + integration; torch-free)
+  requirements.txt         Light core deps (API boots + tests pass on these)
+  requirements-ml.txt      Heavy ML stack (torch + audiosr) — installed separately
 ```
+
+### Enhancement Data Flow
+
+```
+Ingest:   Browser → POST /upload (audio) → service validates → repo put_object
+          → B2 originals/<collection>/<name>
+
+Enhance:  Browser → POST /jobs → service.create_job writes a `queued` manifest
+          → B2 jobs/<id>.json; a FastAPI BackgroundTask calls service.run_job
+          → (single-flight lock) download original → AudioSR engine (48 kHz)
+          → put_object enhanced/<collection>/<name>.wav + .json sidecar
+          → manifest updated to `completed` with sample rates, sizes, amplification
+
+Serve:    Browser → /library or /jobs/{id} → presigned URLs (reuse /files-by-key/preview)
+          → inline <audio> playback of original + enhanced
+```
+
+**Single-flight runner.** AudioSR is memory-heavy, so a module-level lock in
+`service/jobs.py` serialises real enhancement runs — one job executes at a time,
+extra runs queue behind the lock. Durable job state lives in B2; in-flight status
+is per-replica (see [RELIABILITY.md](docs/RELIABILITY.md)).
 
 ## Boundary Invariants
 
@@ -74,14 +100,17 @@ services/api/
 
 ## Data Stores
 
-- **Backblaze B2** — object storage (S3-compatible API)
-  - All uploaded files stored in a single bucket
-  - File listing and metadata via S3 `list_objects_v2` / `head_object`
-  - No application database — B2 is the sole data store
+- **Backblaze B2** — object storage (S3-compatible API), the sole data store
+  - `originals/<collection>/<name>` — ingested source audio
+  - `enhanced/<collection>/<name>.wav` — 48 kHz super-resolved rendition
+  - `enhanced/<collection>/<name>.json` — provenance sidecar (sample rates, duration, model, sizes, amplification)
+  - `jobs/<id>.json` — job manifests (the system of record for job state)
+  - Listing and metadata via S3 `list_objects_v2` / `head_object`; no application database
 
 ## External Services
 
-- **Backblaze B2 S3 API** — file storage, retrieval, deletion, presigned URLs
+- **Backblaze B2 S3 API** — object storage, retrieval, deletion, presigned URLs
+- **AudioSR model** — `versatile_audio_super_resolution`, run **locally / on-device**. No external API call and no second API key; the "basic" checkpoint is downloaded once from the public HuggingFace hub (keyless) and cached.
 
 ## Trust Boundaries
 
@@ -93,10 +122,12 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 ## Data Flows
 
-- **Upload**: Browser -> `POST /upload` (multipart) -> API validates -> service orchestrates -> repo writes to B2 -> metadata extracted -> response
-- **List**: Browser -> `GET /files` -> service calls repo -> returns file list
-- **Download**: Browser -> `GET /files/{key}/download` -> service validates key -> repo generates presigned URL -> browser downloads
-- **Delete**: Browser -> `DELETE /files/{key}` -> service validates key -> repo deletes from B2
+- **Ingest**: Browser -> `POST /upload` (multipart, audio only) -> API validates -> service writes to B2 `originals/<collection>/` -> response
+- **Enhance**: Browser -> `POST /jobs` -> `queued` manifest -> BackgroundTask `run_job` (single-flight) -> AudioSR -> enhanced WAV + sidecar to B2 -> manifest `completed`
+- **Track**: Browser -> `GET /jobs` / `GET /jobs/{id}` -> service reads manifests from B2 (polled while queued/processing)
+- **Library**: Browser -> `GET /library` -> service joins `originals/` with `enhanced/` -> paired tracks
+- **Serve**: Browser -> `/files-by-key/preview?key=...` -> presigned URL -> inline `<audio>` playback
+- **Delete**: Browser -> `DELETE /jobs/{id}` -> service deletes the enhanced WAV + sidecar + manifest (scoped to that job's keys)
 
 ## Observability
 
@@ -107,10 +138,12 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 ## Canonical Files
 
-- Layered API handler: `services/api/app/runtime/upload.py`
-- Service orchestration: `services/api/app/service/upload.py`
-- B2 data access (repo layer): `services/api/app/repo/b2_client.py`
-- Pydantic models: `services/api/app/types/` (`files.py`, `upload.py`, `stats.py`, `formatting.py`)
+- Enhancement engine (repo adapter): `services/api/app/repo/audiosr_engine.py`
+- Job orchestration + single-flight runner: `services/api/app/service/jobs.py`
+- B2-backed job store: `services/api/app/repo/job_store.py`
+- Layered API handler: `services/api/app/runtime/jobs.py` (and `runtime/upload.py`)
+- B2 data access (repo layer): `services/api/app/repo/b2_client.py`, `repo/b2_object.py`
+- Pydantic models: `services/api/app/types/` (`jobs.py`, `files.py`, `upload.py`, `stats.py`)
 - Config (pydantic-settings): `services/api/app/config/settings.py`
 - Structural tests: `services/api/tests/test_structure.py`
 - Frontend API client: `apps/web/src/lib/api-client.ts`
@@ -118,9 +151,12 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 ## Core Features
 
-- [File Upload](docs/features/file-upload.md)
-- [File Browser](docs/features/file-browser.md)
+- [Audio Enhancement](docs/features/audio-enhancement.md)
+- [Enhancement Jobs](docs/features/enhancement-jobs.md)
+- [Audio Library](docs/features/audio-library.md)
 - [Dashboard](docs/features/dashboard.md)
+- [Audio Ingest (Upload)](docs/features/file-upload.md)
+- [File Browser](docs/features/file-browser.md)
 - [Metadata Extraction](docs/features/metadata-extraction.md)
 
 ## References

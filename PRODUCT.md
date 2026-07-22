@@ -6,28 +6,29 @@ product
 
 ## Users
 
-AI coding agents and "vibe coders" (developers who lean on AI to move fast) who clone
-this kit as the foundation for a new full-stack app. Their context: they want to skip
-the boilerplate loop (dashboard, upload, file browser, cloud storage wiring) and go
-straight to building their app's unique features. They read the repo, keep the shared
-scaffolding, and rebrand + rewrite the dashboard for their own use case.
+Podcast networks, oral-history archives, and music-production teams (and the engineers
+who serve them) who need to restore and upscale large libraries of degraded audio to
+48 kHz. Their context: they have terabytes of low-quality source recordings and want a
+batch pipeline that reconstructs high-frequency content on-device and keeps every
+artifact — original, enhanced rendition, and provenance sidecar — durably in cloud
+storage.
 
 ## Product Purpose
 
-A production-ready full-stack starter kit (Next.js 16 + React 19 + Tailwind v4 +
-shadcn/ui frontend, FastAPI backend) with Backblaze B2 cloud storage integrated out of
-the box. It ships a dashboard, drag-and-drop upload, and a file browser so builders
-start from a working app, not a blank page. Success = a builder can clone it, run it,
-rebrand it via one config file, and trust every screen enough to build on top without
-first fixing it.
+A batch audio super-resolution pipeline (Next.js 16 + React 19 + Tailwind v4 +
+shadcn/ui frontend, FastAPI backend) with Backblaze B2 as the single storage layer. It
+ingests audio, runs the local `versatile_audio_super_resolution` (AudioSR) model to
+upscale it to 48 kHz, and writes the enhanced WAV + a JSON sidecar back to B2 — a
+concrete demonstration of write amplification at scale (a 1 TB archive becomes 5–10 TB).
+Success = a user can ingest a clip, enhance it, hear the difference, and see the
+storage-amplification story as a live metric — with every screen production-grade.
 
 ## Brand Personality
 
-Confident, precise, quietly professional. Voice is direct and free of hype ("Stop
-wiring boilerplate and start building"). The interface should feel like a modern
-developer tool — considered, calm, trustworthy — not a marketing showpiece. It is a
-**neutral foundation** that others rebrand: the design carries craft through restraint,
-not through a strong opinionated identity of its own.
+Confident, precise, quietly professional. Voice is direct and free of hype
+("Restore your archive, at scale"). The interface should feel like a modern developer
+tool — considered, calm, trustworthy — not a marketing showpiece. The design carries
+craft through restraint, letting the audio and the amplification metrics be the story.
 
 ## Anti-references
 

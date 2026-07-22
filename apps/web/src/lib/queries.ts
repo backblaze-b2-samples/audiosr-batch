@@ -3,18 +3,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
+  createJob,
   deleteFile,
+  deleteJob,
+  getEnhancementActivity,
+  getEnhancementStats,
   getFileDetail,
   getFiles,
   getFileStats,
   getHealth,
+  getJob,
+  getJobs,
+  getLibrary,
   getPreviewUrl,
   getUploadActivity,
+  runJob,
 } from "@/lib/api-client";
 import type {
+  CreateJobRequest,
+  EnhancementJob,
   FileMetadata,
   FileMetadataDetail,
-} from "@vibe-coding-starter-kit/shared";
+} from "@audiosr-batch/shared";
 
 // Single source of truth for query keys. Keep these tightly scoped so that
 // invalidating "files" doesn't blow away unrelated caches, and so an IDE
@@ -29,6 +39,12 @@ export const qk = {
   preview: (key: string) => [...qk.all, "preview", key] as const,
   detail: (key: string) => [...qk.all, "detail", key] as const,
   health: () => [...qk.all, "health"] as const,
+  jobs: () => [...qk.all, "jobs"] as const,
+  job: (id: string) => [...qk.all, "jobs", id] as const,
+  enhancementStats: () => [...qk.all, "enhancement-stats"] as const,
+  enhancementActivity: (days: number) =>
+    [...qk.all, "enhancement-activity", days] as const,
+  library: () => [...qk.all, "library"] as const,
 };
 
 export type Health = Awaited<ReturnType<typeof getHealth>>;
@@ -102,5 +118,86 @@ export function useDeleteFile() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.all });
     },
+  });
+}
+
+// --- Enhancement jobs ---
+
+function hasInFlight(jobs: EnhancementJob[] | undefined): boolean {
+  return !!jobs?.some(
+    (j) => j.status === "queued" || j.status === "processing"
+  );
+}
+
+// Polls while any job is queued/processing so status/amplification update live,
+// then settles once everything is completed/failed.
+export function useJobs() {
+  return useQuery<EnhancementJob[], ApiError>({
+    queryKey: qk.jobs(),
+    queryFn: getJobs,
+    refetchInterval: (query) =>
+      hasInFlight(query.state.data as EnhancementJob[] | undefined) ? 3_000 : false,
+  });
+}
+
+export function useJob(id: string | undefined, enabled = true) {
+  return useQuery<EnhancementJob, ApiError>({
+    queryKey: qk.job(id ?? ""),
+    queryFn: () => getJob(id as string),
+    enabled: enabled && !!id,
+    refetchInterval: (query) => {
+      const job = query.state.data as EnhancementJob | undefined;
+      return job && (job.status === "queued" || job.status === "processing")
+        ? 3_000
+        : false;
+    },
+  });
+}
+
+export function useEnhancementStats() {
+  return useQuery({
+    queryKey: qk.enhancementStats(),
+    queryFn: getEnhancementStats,
+    refetchInterval: 5_000,
+  });
+}
+
+export function useEnhancementActivity(days = 7) {
+  return useQuery({
+    queryKey: qk.enhancementActivity(days),
+    queryFn: () => getEnhancementActivity(days),
+  });
+}
+
+export function useCreateJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateJobRequest) => createJob(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.all }),
+  });
+}
+
+export function useRunJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => runJob(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.all }),
+  });
+}
+
+export function useDeleteJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteJob(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.all }),
+  });
+}
+
+// --- Audio library ---
+
+export function useLibrary() {
+  return useQuery<Awaited<ReturnType<typeof getLibrary>>, ApiError>({
+    queryKey: qk.library(),
+    queryFn: getLibrary,
   });
 }

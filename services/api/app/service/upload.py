@@ -6,45 +6,27 @@ from app.service.metadata import extract_metadata
 from app.types import FileUploadResponse
 from app.types.formatting import humanize_bytes
 
-# Note: image/svg+xml is deliberately excluded. SVGs can embed <script>, so a
-# file stored and later served from a public bucket URL would execute in the
-# browser (stored XSS). Re-add only with server-side SVG sanitization.
+# This app ingests low-quality AUDIO to super-resolve, so the upload allow-list
+# is audio-only: MP3, WAV (both common MIME spellings), and OGG. Everything else
+# is rejected at the boundary.
 ALLOWED_TYPES = {
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-    "application/pdf",
-    "text/plain",
-    "text/csv",
-    "application/json",
-    "application/zip",
-    "video/mp4",
     "audio/mpeg",
     "audio/wav",
+    "audio/x-wav",
+    "audio/ogg",
 }
 
 MIME_EXTENSION_MAP: dict[str, set[str]] = {
-    "image/jpeg": {"jpg", "jpeg", "jfif"},
-    "image/png": {"png"},
-    "image/gif": {"gif"},
-    "image/webp": {"webp"},
-    "application/pdf": {"pdf"},
-    "text/plain": {"txt", "text", "log", "md"},
-    "text/csv": {"csv"},
-    "application/json": {"json"},
-    "application/zip": {"zip"},
-    "video/mp4": {"mp4"},
     "audio/mpeg": {"mp3", "mpeg"},
     "audio/wav": {"wav"},
+    "audio/x-wav": {"wav"},
+    "audio/ogg": {"ogg", "oga"},
 }
 
-# Magic-byte signatures for the binary types we accept. The client-declared
+# Magic-byte signatures for the audio types we accept. The client-declared
 # content_type is untrusted, so we sniff the leading bytes and reject obvious
-# mismatches (e.g. an HTML/script payload uploaded as image/png). Text-like
-# types (text/plain, text/csv, application/json) have no reliable signature and
-# are intentionally omitted — they skip this check but remain constrained by
-# the extension/type consistency check.
+# mismatches (e.g. an HTML/script payload uploaded as audio/wav). Every accepted
+# audio type has a recognizable container signature, so nothing skips this check.
 def matches_content_signature(data: bytes, content_type: str) -> bool:
     """Return True if `data`'s leading bytes are consistent with `content_type`.
 
@@ -69,8 +51,10 @@ def matches_content_signature(data: bytes, content_type: str) -> bool:
         return data[:3] == b"ID3" or (
             len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
         )
-    if content_type == "audio/wav":
+    if content_type in ("audio/wav", "audio/x-wav"):
         return data[:4] == b"RIFF" and data[8:12] == b"WAVE"
+    if content_type == "audio/ogg":
+        return data[:4] == b"OggS"
     return True
 
 _SAFE_FILENAME_RE = re.compile(r"[^\w\-.]")
@@ -117,13 +101,22 @@ class UploadError(Exception):
         super().__init__(detail)
 
 
+def sanitize_collection(collection: str | None) -> str:
+    """Sanitize the optional collection name into a safe single path segment."""
+    if not collection:
+        return "default"
+    name = _SAFE_FILENAME_RE.sub("_", collection.replace("/", "_")).strip("._")
+    return name[:60] or "default"
+
+
 def process_upload(
     file_data: bytes,
     filename: str,
     content_type: str,
     content_length: int | None = None,
+    collection: str | None = None,
 ) -> FileUploadResponse:
-    """Validate and process a file upload. Raises UploadError on failure."""
+    """Validate and process an audio upload. Raises UploadError on failure."""
     if not filename:
         raise UploadError("No filename provided")
 
@@ -161,8 +154,11 @@ def process_upload(
         )
 
     # B2 buckets are always versioned — uploading the same key creates a new
-    # version automatically.  No duplicate rejection needed.
-    key = f"uploads/{safe_name}"
+    # version automatically.  No duplicate rejection needed. Ingested originals
+    # live under originals/<collection>/<name> so the enhancement pipeline and
+    # the Audio Library can pair them with their enhanced renditions.
+    safe_collection = sanitize_collection(collection)
+    key = f"{settings.originals_prefix}{safe_collection}/{safe_name}"
     result = upload_file(file_data, key, content_type)
     metadata = extract_metadata(
         file_data, safe_name, content_type, result.uploaded_at

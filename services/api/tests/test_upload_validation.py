@@ -1,4 +1,4 @@
-"""Unit + integration tests for upload validation and content sniffing."""
+"""Unit + integration tests for audio upload validation and content sniffing."""
 
 import pytest
 
@@ -7,6 +7,7 @@ from app.service.upload import (
     UploadError,
     matches_content_signature,
     process_upload,
+    sanitize_collection,
     sanitize_filename,
     validate_extension_matches_type,
 )
@@ -19,8 +20,8 @@ from app.types import FileUploadResponse
     ("raw", "expected"),
     [
         ("../../etc/passwd", "passwd"),  # path components stripped
-        ("a\x00b.txt", "ab.txt"),  # null byte removed
-        ("my file.txt", "my_file.txt"),  # unsafe char substituted
+        ("a\x00b.wav", "ab.wav"),  # null byte removed
+        ("my clip.wav", "my_clip.wav"),  # unsafe char substituted
         ("...hidden", "_hidden"),  # dot run collapses to _ before dot-strip
         ("", "unnamed"),  # empty → placeholder
         ("/", "unnamed"),  # only a path separator → placeholder
@@ -33,8 +34,8 @@ def test_sanitize_filename(raw, expected):
 @pytest.mark.parametrize(
     "raw",
     [
-        "a" * 300 + ".txt",  # long name with extension
-        "a" * 300,  # long name, NO extension (regression: was 301 chars + ".")
+        "a" * 300 + ".wav",  # long name with extension
+        "a" * 300,  # long name, NO extension
         "a" * 300 + "." + "b" * 250,  # absurdly long extension
     ],
 )
@@ -44,17 +45,36 @@ def test_sanitize_filename_truncates_long_names(raw):
     assert not result.startswith(".")
 
 
+# --- sanitize_collection ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, "default"),
+        ("", "default"),
+        ("podcast-a", "podcast-a"),
+        ("a/b/c", "a_b_c"),
+        ("../../evil", "evil"),
+    ],
+)
+def test_sanitize_collection(raw, expected):
+    assert sanitize_collection(raw) == expected
+
+
 # --- validate_extension_matches_type ----------------------------------------
 
 
 @pytest.mark.parametrize(
     ("filename", "content_type", "expected"),
     [
-        ("photo.jpg", "image/jpeg", True),
-        ("photo.jpeg", "image/jpeg", True),
-        ("photo.png", "image/jpeg", False),  # extension/type mismatch
-        ("noext", "image/jpeg", True),  # no extension → not enforced
-        ("x.exe", "image/jpeg", False),
+        ("clip.wav", "audio/wav", True),
+        ("clip.wav", "audio/x-wav", True),
+        ("song.mp3", "audio/mpeg", True),
+        ("song.mpeg", "audio/mpeg", True),
+        ("field.ogg", "audio/ogg", True),
+        ("clip.mp3", "audio/wav", False),  # extension/type mismatch
+        ("noext", "audio/wav", True),  # no extension → not enforced
         ("x.pdf", "application/octet-stream", False),  # type not in map
     ],
 )
@@ -64,23 +84,23 @@ def test_validate_extension_matches_type(filename, content_type, expected):
 
 # --- matches_content_signature ----------------------------------------------
 
-_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
-_JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 8
-_PDF = b"%PDF-1.7\n"
-_ZIP = b"PK\x03\x04" + b"\x00" * 8
+_WAV = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 8
+_OGG = b"OggS" + b"\x00" * 8
+_MP3_ID3 = b"ID3\x04\x00" + b"\x00" * 8
+_MP3_SYNC = b"\xff\xfb" + b"\x00" * 8
 
 
 @pytest.mark.parametrize(
     ("data", "content_type", "expected"),
     [
-        (_PNG, "image/png", True),
-        (b"<html>not a png", "image/png", False),  # spoofed image
-        (_JPEG, "image/jpeg", True),
-        (_PDF, "application/pdf", True),
-        (b"nope", "application/pdf", False),
-        (_ZIP, "application/zip", True),
-        (b"any text at all", "text/plain", True),  # text has no signature
-        (b"{}", "application/json", True),  # json has no signature
+        (_WAV, "audio/wav", True),
+        (_WAV, "audio/x-wav", True),
+        (b"<html>not a wav", "audio/wav", False),  # spoofed audio
+        (_OGG, "audio/ogg", True),
+        (b"nope", "audio/ogg", False),
+        (_MP3_ID3, "audio/mpeg", True),
+        (_MP3_SYNC, "audio/mpeg", True),
+        (b"not mp3 bytes", "audio/mpeg", False),
     ],
 )
 def test_matches_content_signature(data, content_type, expected):
@@ -93,14 +113,14 @@ def test_matches_content_signature(data, content_type, expected):
 def test_rejects_oversized_content_length(monkeypatch):
     monkeypatch.setattr(upload_service.settings, "max_file_size", 10)
     with pytest.raises(UploadError) as exc:
-        process_upload(b"x", "a.txt", "text/plain", content_length=999)
+        process_upload(_WAV, "a.wav", "audio/wav", content_length=999)
     assert exc.value.status_code == 413
 
 
 def test_rejects_oversized_body(monkeypatch):
     monkeypatch.setattr(upload_service.settings, "max_file_size", 5)
     with pytest.raises(UploadError) as exc:
-        process_upload(b"way too big", "a.txt", "text/plain", content_length=None)
+        process_upload(_WAV, "a.wav", "audio/wav", content_length=None)
     assert exc.value.status_code == 413
 
 
@@ -112,20 +132,20 @@ def test_rejects_disallowed_type():
 
 def test_rejects_extension_mismatch():
     with pytest.raises(UploadError) as exc:
-        process_upload(b"data", "a.png", "text/plain", content_length=4)
+        process_upload(_WAV, "a.mp3", "audio/wav", content_length=len(_WAV))
     assert exc.value.status_code == 415
 
 
 def test_rejects_content_signature_mismatch():
-    # A .png name and declared image/png, but the bytes aren't a PNG.
+    # A .wav name and declared audio/wav, but the bytes aren't a RIFF/WAVE.
     with pytest.raises(UploadError) as exc:
-        process_upload(b"not a real png", "a.png", "image/png", content_length=14)
+        process_upload(b"not a real wav", "a.wav", "audio/wav", content_length=14)
     assert exc.value.status_code == 415
 
 
 def test_rejects_empty_file():
     with pytest.raises(UploadError):
-        process_upload(b"", "a.txt", "text/plain", content_length=0)
+        process_upload(b"", "a.wav", "audio/wav", content_length=0)
 
 
 # --- uploads_total metric increments ----------------------------------------
@@ -141,9 +161,9 @@ async def test_successful_upload_increments_uploads_metric(client, monkeypatch):
         "upload_file",
         lambda file_data, key, content_type: FileUploadResponse(
             key=key,
-            filename="a.txt",
+            filename="a.wav",
             size_bytes=len(file_data),
-            size_human="5 B",
+            size_human="16 B",
             content_type=content_type,
             uploaded_at="2026-02-14T00:00:00Z",
             url=None,
@@ -157,7 +177,7 @@ async def test_successful_upload_increments_uploads_metric(client, monkeypatch):
     )
 
     resp = await client.post(
-        "/upload", files={"file": ("a.txt", b"hello", "text/plain")}
+        "/upload", files={"file": ("a.wav", _WAV, "audio/wav")}
     )
     assert resp.status_code == 200
 

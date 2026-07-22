@@ -3,6 +3,12 @@
 
 This is the authoritative control surface for all coding agents. Read this first.
 
+**App: AudioSR Batch** — a batch audio super-resolution pipeline. It ingests
+low-quality audio into Backblaze B2, runs the local `versatile_audio_super_resolution`
+(AudioSR) model to reconstruct high-frequency content, and writes a 48 kHz WAV
+rendition + JSON sidecar back to B2. B2 is the single storage layer and system of
+record (no database).
+
 ## 1. Repository Map
 
 ```
@@ -14,22 +20,47 @@ docs/exec-plans/   Execution plans and tech debt tracker
 infra/railway/     Deployment config
 ```
 
-## 2. Building on This Starter Kit
+Enhancement pipeline modules (added on top of the starter scaffolding):
 
-When this repo is used as the foundation for a new app, the following pieces are part of the starter contract — keep them. Adapt only what the new use case actually requires.
+```
+services/api/app/
+  types/jobs.py            EnhancementJob, EnhancementParams, JobStatus, stats/library models
+  repo/audiosr_engine.py   AudioSR adapter — lazy-imports torch/audiosr; device auto-detect
+  repo/job_store.py        B2-backed job persistence (jobs/<id>.json manifests)
+  repo/b2_object.py        object read/write/exists helpers (boto3 stays in repo/)
+  service/jobs.py          job lifecycle + single-flight runner + stats/activity
+  service/library.py       scoped explorer (pairs originals/ with enhanced/)
+  runtime/jobs.py          /jobs (+ /run, /stats, /stats/activity) and /library routes
+services/api/requirements-ml.txt   heavy ML stack (torch + audiosr), installed separately
 
-**Keep as-is (do not strip, rename, or replace)**
-- **UI kit / design system.** `apps/web/src/components/ui/` (shadcn primitives), the design tokens in `apps/web/src/app/globals.css`, and the `/design` reference page. Build new screens with these primitives; never edit the generated `components/ui/` files directly. Restyling happens through tokens in `globals.css`.
-- **File Explorer.** `/files` route, `apps/web/src/app/files/`, and `apps/web/src/components/files/`. The Files sidebar entry in `apps/web/src/components/layout/app-sidebar.tsx` stays.
-- **Upload.** `/upload` route, `apps/web/src/app/upload/`, and `apps/web/src/components/upload/`. The Upload sidebar entry stays.
-- The sidebar nav itself (Dashboard, Upload, Files, Settings, plus the Design System utility link).
+apps/web/src/
+  app/jobs/                Enhancements (primary entity) — table, create dialog, detail
+  app/library/             Audio Library (scoped explorer)
+  components/jobs/*        job UI: status badge, audio player, dialogs, table
+  components/library/*     library UI
+  components/dashboard/*   enhancement metrics + enhanced-output chart + recent enhancements
+```
 
-**Adapt to the new use case**
-- **Dashboard.** `/` route and `apps/web/src/components/dashboard/` (stats cards, upload chart, recent uploads table) are illustrative defaults. Replace them with metrics, charts, and tables that reflect what the new app actually does (e.g. transcripts processed, embeddings indexed, classifications run). New aggregations must flow through the same `runtime -> service -> repo` layering and be exposed via TanStack Query hooks in `apps/web/src/lib/queries.ts` — no bare `useEffect + fetch`.
-- Update `docs/features/dashboard.md` in the same PR as any dashboard change (see §9).
+## 2. App Structure (built on the vibe-coding starter kit)
 
-**Why this contract exists**
-- The UI kit, Files, and Upload pages are the reusable B2-backed scaffolding that makes this a starter kit — stripping them defeats the purpose. The dashboard is the only screen explicitly designed to be rewritten per app.
+AudioSR Batch keeps the reusable B2-backed scaffolding from the starter kit and
+adds the enhancement pipeline on top. When extending it, respect these boundaries.
+
+**Kept from the starter (do not strip, rename, or replace)**
+- **UI kit / design system.** `apps/web/src/components/ui/` (shadcn primitives), the design tokens in `apps/web/src/app/globals.css`, and the `/design` reference page. Build new screens with these primitives; never edit the generated `components/ui/` files directly. Restyle through tokens in `globals.css`.
+- **File Explorer.** `/files` route, `apps/web/src/app/files/`, and `apps/web/src/components/files/` — the full-bucket browse surface. It **coexists** with the scoped Audio Library (`/library`, which is limited to `originals/` + `enhanced/`).
+- **Upload.** `/upload` route and `apps/web/src/components/upload/` — adapted to accept audio only and to route uploads to `originals/<collection>/`, but the route and sidebar entry stay.
+- **Settings** (`/settings`) — kept as the form-UX exemplar (`settings-form.tsx`).
+
+**App-specific surfaces (added for AudioSR Batch)**
+- **Enhancements** (`/jobs`) — the primary entity. Create/run/track/delete super-resolution jobs. Create form and detail dialog live in `components/jobs/`.
+- **Audio Library** (`/library`) — scoped explorer pairing each original with its enhanced rendition, both playable inline.
+- **Dashboard** (`/`) — enhancement metrics (files enhanced, storage amplification, bandwidth gain, jobs by status), the enhanced-output volume chart, and a recent-enhancements table.
+
+New aggregations and endpoints flow through the same `runtime -> service -> repo`
+layering and are exposed via TanStack Query hooks in `apps/web/src/lib/queries.ts`
+— no bare `useEffect + fetch`. Update the matching `docs/features/*.md` in the same
+PR (see §9).
 
 ## 3. Architectural Invariants
 

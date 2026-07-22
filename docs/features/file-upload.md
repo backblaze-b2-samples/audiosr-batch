@@ -1,80 +1,66 @@
-<!-- last_verified: 2026-06-25 -->
-# Feature: File Upload
+<!-- last_verified: 2026-07-22 -->
+# Feature: Audio Ingest (Upload)
 
 ## Purpose
-Upload files from the browser to Backblaze B2 with real-time progress tracking.
+Ingest low-quality audio from the browser into Backblaze B2 under
+`originals/<collection>/`, ready to be super-resolved.
 
 ## Used By
 - UI: `/upload` page, upload form component
-- API: `POST /upload`
+- API: `POST /upload` (multipart, with an optional `collection` form field)
 
 ## Core Functions
-- `apps/web/src/components/upload/upload-form.tsx` — orchestrates dropzone + progress + upload state
-- `apps/web/src/components/upload/dropzone.tsx` — drag-and-drop via `react-dropzone`
-- `apps/web/src/components/upload/upload-progress.tsx` — per-file progress, errors, and retry controls
-- `apps/web/src/lib/api-client.ts` — `uploadFile()` using XHR for progress events
-- `services/api/app/runtime/upload.py` — HTTP handler, reads file chunks
-- `services/api/app/service/upload.py` — validates and orchestrates upload
+- `apps/web/src/components/upload/upload-form.tsx` — dropzone + progress + collection field
+- `apps/web/src/components/upload/dropzone.tsx` — drag-and-drop via `react-dropzone` (audio types, 200 MB)
+- `apps/web/src/lib/upload-file-types.ts` — client allow-list (mirrors the backend)
+- `apps/web/src/lib/api-client.ts` — `uploadFile()` (XHR for progress; sends `collection`)
+- `services/api/app/runtime/upload.py` — HTTP handler
+- `services/api/app/service/upload.py` — validation + `originals/<collection>/<name>` keying
 - `services/api/app/repo/b2_client.py` — `upload_file()` via boto3 `put_object`
-- `services/api/app/service/metadata.py` — `extract_metadata()` after upload
 
 ## Canonical Files
-- Upload handler pattern: `services/api/app/runtime/upload.py`
-- Service orchestration pattern: `services/api/app/service/upload.py`
-- Frontend upload flow: `apps/web/src/components/upload/upload-form.tsx`
+- Upload handler: `services/api/app/runtime/upload.py`
+- Service orchestration: `services/api/app/service/upload.py`
 
 ## Inputs
-- file: `File` (from browser, multipart form data)
-- content_type: string (from file MIME type)
+- file: `File` (multipart) — audio only
+- collection: string (optional form field; defaults to `default`)
 
 ## Outputs
 - `FileUploadResponse`: key, filename, size, content_type, uploaded_at, url, metadata
-- Side effects: file stored in B2 bucket under `uploads/{sanitized_filename}`
+- Side effect: object stored at `originals/<collection>/<sanitized_filename>`
+
+## Accepted types
+Audio only: `audio/mpeg` (mp3), `audio/wav`, `audio/x-wav` (wav), `audio/ogg` (ogg/oga).
+Everything else is rejected at the boundary. Each type has a magic-byte signature
+(`ID3`/MPEG frame sync, `RIFF…WAVE`, `OggS`) that the server verifies.
 
 ## Flow
-- User drops or selects files in dropzone
-- Client validates file size (max 100MB) and type — rejected files remain in the queue with a clear reason and show toast feedback
-- XHR sends multipart POST to `/upload` with progress events
-- API checks `Content-Length` header early to reject oversized requests before reading body
-- API validates content type against allowlist (SVG excluded — stored-XSS risk)
-- API sanitizes filename (strips path components, null bytes, unsafe chars, limits to 200 chars)
-- API validates file extension matches declared MIME type
-- API reads file in 1MB chunks with streaming size enforcement (max 100MB)
-- API rejects empty files
-- API verifies the leading bytes match the declared type for binary formats (magic-byte signature check)
-- API uses key: `uploads/{sanitized_filename}`
-- API calls `put_object` to B2
-- API extracts file metadata (checksums, image dimensions, PDF info)
-- API returns `FileUploadResponse`
-- Client shows toast, updates progress state, and refreshes shared data after successful uploads
+- User picks a collection and drops/selects audio in the dropzone
+- Client validates size (max 200 MB) and type; rejected files stay in the queue with a reason
+- XHR POSTs multipart to `/upload` with progress events
+- API checks `Content-Length` early, validates the type allow-list, sanitizes the filename and the collection (single safe path segment, no traversal), enforces the size limit while streaming, rejects empty files, and verifies the magic-byte signature
+- API writes to `originals/<collection>/<safe_name>` via `put_object`, extracts generic metadata (checksums), and returns `FileUploadResponse`
 
 ## Edge Cases
-- File exceeds 100MB → client-side rejected row + toast; API returns 413 if bypassed
-- File type not in allowlist → API returns 415
-- File extension mismatches MIME type → API returns 415
-- File contents don't match the declared type (e.g. script bytes sent as `image/png`) → API returns 415
-- No filename provided → API returns 400
-- Empty file → API returns 400
-- Duplicate filename → B2 creates a new version (buckets are always versioned)
-- B2 unreachable → API returns 500; UI keeps failed rows retryable when the file can be resubmitted
-- Upload aborted by user → XHR abort, error state in UI
+- File > 200 MB → client-rejected row + toast; API returns 413 if bypassed
+- Non-audio type → API returns 415
+- Extension/type mismatch or spoofed bytes → API returns 415
+- Empty file / no filename → API returns 400
+- Unsafe collection (e.g. `../`) → sanitized to a single safe segment; never escapes `originals/`
+- Duplicate name → B2 versions it (buckets are always versioned)
 
 ## UX States
-- Empty: dropzone with instructions
-- Loading: per-file progress bars with spinner icon
-- Error: red status icon, error message per file, retry action when applicable
-- Complete: green checkmark, "Clear finished" button
-- Rejected: persistent row with non-retryable reason
-- Disabled: dropzone explains that new files can be added when the current queue finishes
+- Empty: dropzone with audio-only + 200 MB hint and a Collection field
+- Loading / Error / Complete / Rejected: per-file progress, retry where applicable
 
 ## Verification
-- Test files: `services/api/tests/test_upload_validation.py`, `services/api/tests/test_upload_conflict.py`, `services/api/tests/test_error_handling.py`
-- Required cases: successful upload, oversized file rejection (413), disallowed type (415), extension mismatch (415), content-signature mismatch (415), missing filename, empty file, duplicate filename allowed, `uploads_total` metric increments
+- Test files: `services/api/tests/test_upload_validation.py`, `test_upload_conflict.py`, `test_error_handling.py`
+- Required cases: successful audio upload, oversized (413), disallowed type (415), extension mismatch (415), signature mismatch (415), empty file (400), collection routing + sanitization
 - Quick verify command: `pnpm test:api`
-- Full verify command: `pnpm lint && pnpm lint:api && pnpm test:api && pnpm check:structure`
 - Pass criteria: all pytest tests green, no ruff violations
 
 ## Related Docs
-- [ARCHITECTURE.md](../../ARCHITECTURE.md)
+- [Enhancement Jobs](enhancement-jobs.md)
 - [Metadata Extraction](metadata-extraction.md)
 - [App Workflows](../app-workflows.md)

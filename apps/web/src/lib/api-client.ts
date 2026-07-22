@@ -1,10 +1,15 @@
 import type {
+  CreateJobRequest,
   DailyUploadCount,
+  EnhancementActivityPoint,
+  EnhancementJob,
+  EnhancementStats,
   FileMetadata,
   FileMetadataDetail,
   FileUploadResponse,
+  LibraryTrack,
   UploadStats,
-} from "@vibe-coding-starter-kit/shared";
+} from "@audiosr-batch/shared";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -186,14 +191,61 @@ export async function deleteFile(key: string) {
   );
 }
 
+// --- Enhancement jobs ---
+
+export async function getJobs() {
+  return apiFetch<EnhancementJob[]>("/jobs");
+}
+
+export async function getJob(id: string) {
+  return apiFetch<EnhancementJob>(`/jobs/${encodeURIComponent(id)}`);
+}
+
+export async function getEnhancementStats() {
+  return apiFetch<EnhancementStats>("/jobs/stats");
+}
+
+export async function getEnhancementActivity(days = 7) {
+  return apiFetch<EnhancementActivityPoint[]>(`/jobs/stats/activity?days=${days}`);
+}
+
+export async function createJob(body: CreateJobRequest) {
+  return apiFetch<EnhancementJob>("/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function runJob(id: string) {
+  return apiFetch<EnhancementJob>(`/jobs/${encodeURIComponent(id)}/run`, {
+    method: "POST",
+  });
+}
+
+export async function deleteJob(id: string) {
+  return apiFetch<{ deleted: boolean; id: string }>(
+    `/jobs/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+// --- Audio library (scoped explorer) ---
+
+export async function getLibrary() {
+  return apiFetch<LibraryTrack[]>("/library");
+}
+
 export function uploadFile(
   file: File,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  collection?: string
 ): Promise<FileUploadResponse> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
     formData.append("file", file);
+    if (collection) formData.append("collection", collection);
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable && onProgress) {

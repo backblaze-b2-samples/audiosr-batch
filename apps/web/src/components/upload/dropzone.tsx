@@ -11,7 +11,7 @@ interface DropzoneProps {
   disabled?: boolean;
 }
 
-const MAX_SIZE = 100 * 1024 * 1024; // 100MB
+const MAX_SIZE = 200 * 1024 * 1024; // 200MB
 
 export function Dropzone({
   onFilesSelected,
@@ -45,8 +45,8 @@ export function Dropzone({
   });
 
   const active = isDragActive && !disabled;
-  let title = "Drag & drop files here, or click to browse";
-  let description = "Max file size: 100 MB per file";
+  let title = "Drag & drop audio here, or click to browse";
+  let description = "MP3, WAV, or OGG — up to 200 MB per file";
 
   if (disabled) {
     title = "Uploads in progress";

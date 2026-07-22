@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import type { FileRejection } from "react-dropzone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dropzone } from "./dropzone";
 import { UploadProgress, type UploadItem } from "./upload-progress";
 import { uploadFile } from "@/lib/api-client";
@@ -77,6 +79,7 @@ function getUploadSummary(items: UploadItem[]) {
 export function UploadForm() {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [collection, setCollection] = useState("default");
   const { triggerRefresh } = useRefresh();
 
   const uploadItems = useCallback(
@@ -103,13 +106,17 @@ export function UploadForm() {
           );
 
           try {
-            const response = await uploadFile(item.file, (percent) => {
-              setItems((prev) =>
-                prev.map((i) =>
-                  i.id === item.id ? { ...i, progress: percent } : i
-                )
-              );
-            });
+            const response = await uploadFile(
+              item.file,
+              (percent) => {
+                setItems((prev) =>
+                  prev.map((i) =>
+                    i.id === item.id ? { ...i, progress: percent } : i
+                  )
+                );
+              },
+              collection.trim() || "default"
+            );
             setItems((prev) =>
               prev.map((i) =>
                 i.id === item.id
@@ -145,7 +152,7 @@ export function UploadForm() {
         if (anySuccess) triggerRefresh();
       }
     },
-    [triggerRefresh]
+    [triggerRefresh, collection]
   );
 
   const handleFilesRejected = useCallback((rejections: FileRejection[]) => {
@@ -155,7 +162,7 @@ export function UploadForm() {
       const name = rejection.file.name;
       const errors = rejection.errors.map((e) => {
         if (e.code === "file-too-large") {
-          return `exceeds 100MB limit (${humanizeBytes(rejection.file.size)})`;
+          return `exceeds 200MB limit (${humanizeBytes(rejection.file.size)})`;
         }
         if (e.code === "file-invalid-type") {
           return "file type not supported";
@@ -211,6 +218,22 @@ export function UploadForm() {
         <CardTitle className="card-title">Upload Files</CardTitle>
       </CardHeader>
       <CardContent className="p-5 space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="collection">Collection</Label>
+          <Input
+            id="collection"
+            value={collection}
+            onChange={(e) => setCollection(e.target.value)}
+            placeholder="default"
+            disabled={uploading}
+            className="max-w-xs"
+          />
+          <p className="text-xs text-muted-foreground">
+            Groups originals under <code>originals/&lt;collection&gt;/</code> in B2
+            (e.g. a podcast name or archive batch). Leave as <code>default</code>{" "}
+            if unsure.
+          </p>
+        </div>
         <Dropzone
           onFilesSelected={handleFilesSelected}
           onFilesRejected={handleFilesRejected}

@@ -1,57 +1,57 @@
-<!-- last_verified: 2026-06-25 -->
+<!-- last_verified: 2026-07-22 -->
 # Feature: Dashboard
 
 ## Purpose
-Provide an at-a-glance overview of file storage usage and recent upload activity.
+Give an at-a-glance view of the enhancement pipeline — how much audio has been
+super-resolved and, above all, the **storage-amplification** story (original →
+enhanced bytes) that the sample exists to demonstrate.
 
 ## Used By
 - UI: `/` page (dashboard home)
-- API: `GET /files/stats`, `GET /files`, `GET /files/stats/activity`
+- API: `GET /jobs/stats`, `GET /jobs/stats/activity`, `GET /jobs`
 
 ## Core Functions
 - `apps/web/src/components/dashboard/stats-cards.tsx` — 4 stat cards
-- `apps/web/src/components/dashboard/recent-uploads-table.tsx` — last 10 uploads
-- `apps/web/src/components/dashboard/upload-chart.tsx` — bar chart of uploads per day
-- `apps/web/src/lib/api-client.ts` — `getFileStats()`, `getFiles()`, `getUploadActivity()`
-- `services/api/app/runtime/files.py` — `GET /files/stats` handler
-- `services/api/app/service/files.py` — `get_stats()` business logic
-- `services/api/app/repo/b2_client.py` — `get_upload_stats()` data access
+- `apps/web/src/components/dashboard/enhancement-chart.tsx` — enhanced-output bytes/day bar chart
+- `apps/web/src/components/dashboard/recent-enhancements-table.tsx` — latest jobs
+- `apps/web/src/lib/queries.ts` — `useEnhancementStats()`, `useEnhancementActivity()`, `useJobs()`
+- `services/api/app/service/jobs.py` — `get_enhancement_stats()`, `get_enhancement_activity()`
 
 ## Canonical Files
-- Dashboard page layout: `apps/web/src/components/dashboard/stats-cards.tsx`
-- Stats service logic: `services/api/app/service/files.py`
+- Dashboard stat cards: `apps/web/src/components/dashboard/stats-cards.tsx`
+- Stats service logic: `services/api/app/service/jobs.py`
 
 ## Inputs
-- None (dashboard loads data automatically)
+- None (dashboard loads data automatically; stats poll every 5s)
 
 ## Outputs
-- `GET /files/stats` → `UploadStats` (total_files, total_size_bytes, total_size_human, uploads_today, total_downloads)
-- `GET /files` (limit 10) → `FileMetadata[]` for recent uploads table (sorted newest-first)
-- `GET /files/stats/activity?days=7` → `DailyUploadCount[]` for chart (server-side aggregation)
+- `GET /jobs/stats` → `EnhancementStats` (files_enhanced, jobs_total, total_original/enhanced bytes + human, amplification_ratio, avg_input/output_sample_rate, jobs_by_status)
+- `GET /jobs/stats/activity?days=7` → `EnhancementActivityPoint[]` (enhanced-output bytes per day)
+- `GET /jobs` → `EnhancementJob[]` for the recent-enhancements table
 
 ## Flow
-- Page loads → three parallel API calls (stats, recent files, upload activity)
-- Stats cards display total files, storage used, uploads today, total downloads
-- Upload chart displays server-aggregated daily counts for last 7 days as bar chart after activity data is known
-- Recent uploads table shows last 10 files with filename, size, type, date, status badge
+- Page loads → stats, activity, and recent jobs fetched in parallel
+- Stat cards: **Files enhanced**, **Storage amplification** (enhanced ÷ original bytes — the marquee metric, with the byte totals as a sub-line), **Avg bandwidth gain** (input → output sample rate), **Jobs by status**
+- Chart: enhanced-output volume per day (bytes, last 7 days)
+- Table: recent enhancements (input, sample-rate in→out, amplification, status)
 
 ## Edge Cases
-- API unavailable → error states with retry where supported; activity chart does not show a false zero state while loading
-- No files uploaded → empty chart message, empty table message
-- Large file count → stats endpoint paginates through all objects using `ContinuationToken`
+- API unavailable → inline error states with retry
+- No enhancements yet → empty chart/table messages; amplification shows "—"
+- Large job count → stats iterate all job manifests (fine for a single-tenant demo)
 
 ## UX States
-- Loading: skeleton placeholders for cards, table, and upload activity chart
-- Empty: "No files uploaded yet" / "No upload data available yet"
-- Loaded: populated cards, chart, table
+- Loading: skeletons for cards, chart, table
+- Empty: "No enhancements yet" messaging
+- Loaded: populated cards, chart, table (status badges update live via polling)
 
 ## Verification
-- Test files: `services/api/tests/test_upload_activity.py`, `services/api/tests/test_recent_files.py`
-- Required cases: stats with files, stats with empty bucket, API error fallback
+- Test files: `services/api/tests/test_jobs.py` (`test_enhancement_stats_aggregate`)
+- Required cases: stats with a completed job, empty state, API error fallback
 - Quick verify command: `pnpm test:api`
-- Full verify command: `pnpm lint && pnpm lint:api && pnpm test:api && pnpm check:structure`
-- Pass criteria: all pytest tests green, no ruff violations
+- Pass criteria: aggregation correct; tests green; no ruff violations
 
 ## Related Docs
+- [Enhancement Jobs](enhancement-jobs.md)
 - [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - [App Workflows](../app-workflows.md)

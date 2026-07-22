@@ -2,7 +2,13 @@
 # Feature: File Browser
 
 ## Purpose
-List, preview, download, and delete files stored in Backblaze B2.
+List, preview, download, and delete **every** object in the Backblaze B2 bucket.
+
+> This is the full-bucket explorer. It **coexists** with the scoped
+> [Audio Library](audio-library.md) (`/library`), which shows only this app's
+> `originals/` + `enhanced/` audio paired together. Use Files to see the whole
+> bucket (including `jobs/` manifests and sidecars); use Library for the curated
+> original↔enhanced audio view.
 
 ## Used By
 - UI: `/files` page, file browser component

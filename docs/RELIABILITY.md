@@ -35,6 +35,16 @@ The download counter and the `/metrics` counters are **in-process, per replica**
 - **Download counter** (`app/repo/counter.py`) persists to a JSON file at `DOWNLOAD_COUNT_FILE` (default `data/download_count.json`). On an ephemeral filesystem (Railway without a mounted volume) it **resets to 0 on every redeploy**. With multiple replicas each keeps its own file/count. For durable, shared counts: mount a persistent volume, or swap the adapter for Redis/DB.
 - **`/metrics` counters** live in process memory and reset on restart. Behind a load balancer, each replica reports only its own slice — scrape with an instance label and aggregate, or push to a shared collector.
 
+## Enhancement Job Runner
+
+- **State is durable in B2.** Every job is a JSON manifest at `jobs/<id>.json`; enhanced renditions and sidecars are objects in the bucket. There is no application database, so job history survives an API restart.
+- **Single-flight, in-process.** AudioSR is memory-heavy, so a module-level lock in `service/jobs.py` serialises real enhancement runs — one job executes at a time and extra runs queue behind the lock. The run itself is a FastAPI `BackgroundTask`, so the create/re-run request returns immediately with a `queued` job and the UI polls for status.
+- **In-flight status is per-replica.** The `queued`/`processing` transition and the single-flight lock live in one process. Behind a load balancer with multiple replicas, each replica has its own lock and could run a job concurrently, and a replica restart mid-run leaves a job stuck in `processing` (re-run it). For real horizontal scaling, move to a shared queue/worker (e.g. Redis/Celery) and a shared lock. Durable *state* is already in B2; only the in-flight coordination is per-replica.
+
+## Uploads
+
+- The upload size ceiling is **200 MB** (`MAX_FILE_SIZE`), raised above the starter default because full-quality 48 kHz WAVs and some legacy source tapes are large. Enforced while streaming, so an oversized body is rejected before it's buffered.
+
 ## Rate Limiting
 
 - Per-IP fixed-window limiter (`app/runtime/ratelimit.py`); `RATE_LIMIT_PER_MINUTE` / `RATE_LIMIT_WRITE_PER_MINUTE` are the budgets. Rejected requests get `429` with a `Retry-After` header.

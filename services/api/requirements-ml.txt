@@ -1,0 +1,26 @@
+# Heavy, on-device ML stack for the audio super-resolution feature — kept
+# SEPARATE from the fast-installing core requirements.txt on purpose. The API
+# boots and `pnpm test:api` / `pnpm check:structure` pass WITHOUT this file
+# installed, because everything here is lazy-imported inside
+# app/repo/audiosr_engine.py only at the moment an enhancement job runs.
+#
+# Install it alongside the core requirements when you want to run the pipeline:
+#   cd services/api && source .venv/bin/activate
+#   pip install -r requirements.txt -r requirements-ml.txt
+#
+# The first enhancement run downloads the ~2 GB "basic" checkpoint once from the
+# public HuggingFace hub (keyless), then caches it locally.
+#
+# Device note: CPU works for a short clip. The engine auto-detects CUDA → CPU at
+# runtime (see repo/audiosr_engine.py select_device) and defaults to CPU. Apple
+# MPS is skipped by default (AudioSR's latent-diffusion / torchlibrosa ops have
+# known-unsupported MPS paths); opt in with AUDIOSR_DEVICE=mps. No GPU is ever
+# required.
+
+# versatile_audio_super_resolution — the marquee model. Its own dependency pins
+# pull a compatible torch/torchaudio, transformers==4.30.2, librosa==0.9.2 and
+# numpy<=1.23.5, so we let the package drive those transitive versions.
+audiosr==0.0.7
+# Writing the 48 kHz 16-bit PCM WAV rendition. (Also pulled by audiosr; pinned
+# here because repo/audiosr_engine.py imports it directly.)
+soundfile>=0.12.1

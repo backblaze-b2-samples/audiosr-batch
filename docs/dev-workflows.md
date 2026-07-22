@@ -61,7 +61,27 @@ Engineering workflows for this repo.
 - Frontend lint: `pnpm lint`
 - Backend lint: `pnpm lint:api`
 - Full suite: `pnpm typecheck && pnpm lint && pnpm test:web && pnpm lint:api && pnpm test:api && pnpm check:structure`
-- E2E: `pnpm test:e2e` (run `pnpm --filter @vibe-coding-starter-kit/web exec playwright install chromium` once first)
+- E2E: `pnpm test:e2e` (run `pnpm --filter @audiosr-batch/web exec playwright install chromium` once first)
+
+## Running & testing the enhancement pipeline
+
+The heavy AudioSR stack (`torch` + `audiosr`) lives in `services/api/requirements-ml.txt`,
+**separate** from `requirements.txt`. This is deliberate:
+
+- **Torch-free test path.** `pnpm test:api` / `pnpm check:structure` and `from main import app`
+  all work with only `requirements.txt` installed — the engine (`repo/audiosr_engine.py`)
+  lazy-imports `torch`/`audiosr` inside its functions, and the job tests stub the engine.
+  `tests/test_audiosr_engine.py` even asserts the actionable `EngineUnavailableError`
+  when the stack is absent.
+- **Running real enhancements.** Install the ML stack, then drive a short clip:
+  ```bash
+  cd services/api && source .venv/bin/activate
+  pip install -r requirements-ml.txt   # first run downloads the ~2 GB checkpoint
+  ```
+  Upload a **short** audio clip (a few seconds) via `/upload`, create an enhancement
+  on `/jobs`, and confirm a 48 kHz WAV + JSON sidecar land under `enhanced/`.
+- **Device.** CPU works for a short clip; the engine auto-detects CUDA → CPU and
+  defaults to CPU. Apple MPS is skipped by default (`AUDIOSR_DEVICE=mps` to opt in).
 
 ### When to run
 - After behavior change: run relevant subset

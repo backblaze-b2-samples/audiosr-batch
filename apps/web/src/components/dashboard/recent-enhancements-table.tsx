@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Inbox } from "lucide-react";
+import { ArrowRight, AudioLines } from "lucide-react";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -14,36 +14,30 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { useFiles } from "@/lib/queries";
+import { JobStatusBadge } from "@/components/jobs/status-badge";
+import { useJobs } from "@/lib/queries";
 import { formatDate } from "@/lib/utils";
 
-function mimeToLabel(mime: string) {
-  const map: Record<string, string> = {
-    "image/jpeg": "Image",
-    "image/png": "Image",
-    "image/gif": "Image",
-    "image/webp": "Image",
-    "application/pdf": "PDF",
-    "text/plain": "Text",
-    "text/csv": "CSV",
-    "application/json": "JSON",
-    "application/zip": "Archive",
-    "video/mp4": "Video",
-    "audio/mpeg": "Audio",
-  };
-  return map[mime] || "File";
+function basename(key: string) {
+  return key.split("/").pop() || key;
 }
 
-export function RecentUploadsTable() {
-  const { data: files = [], isLoading, error, refetch } = useFiles("", 10);
+function rateLabel(inRate: number | null, outRate: number | null) {
+  if (!inRate || !outRate) return "—";
+  return `${Math.round(inRate / 1000)}→${Math.round(outRate / 1000)} kHz`;
+}
+
+export function RecentEnhancementsTable() {
+  const { data: jobs = [], isLoading, error, refetch } = useJobs();
+  const recent = jobs.slice(0, 8);
 
   return (
     <Card>
       <CardHeader className="border-b border-border py-4 px-5">
-        <CardTitle className="card-title">Recent Uploads</CardTitle>
+        <CardTitle className="card-title">Recent Enhancements</CardTitle>
         <CardAction className="self-center">
           <Link
-            href="/files"
+            href="/jobs"
             className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             View all
@@ -60,53 +54,49 @@ export function RecentUploadsTable() {
           </div>
         ) : error ? (
           <ErrorState error={error} onRetry={() => refetch()} />
-        ) : files.length === 0 ? (
+        ) : recent.length === 0 ? (
           <EmptyState
-            icon={Inbox}
-            title="No uploads yet"
-            description="Head to Upload to add your first files."
+            icon={AudioLines}
+            title="No enhancements yet"
+            description="Create one from the Enhancements page to get started."
           />
         ) : (
           <Table className="table-fixed">
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="w-[34%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Filename
+                <TableHead className="w-[38%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Input
+                </TableHead>
+                <TableHead className="w-[20%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Rate
                 </TableHead>
                 <TableHead className="w-[14%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Size
+                  Amp
                 </TableHead>
-                <TableHead className="w-[14%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Type
-                </TableHead>
-                <TableHead className="w-[22%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Date
-                </TableHead>
-                <TableHead className="w-[16%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <TableHead className="w-[28%] text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Status
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {files.map((file) => (
-                <TableRow key={file.key} className="table-row-hover">
+              {recent.map((job) => (
+                <TableRow key={job.id} className="table-row-hover">
                   <TableCell className="font-medium">
-                    <div className="truncate">{file.filename}</div>
+                    <div className="truncate" title={job.input_key}>
+                      {basename(job.input_key)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatDate(job.created_at)}
+                    </div>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                    {file.size_human}
+                    {rateLabel(job.input_sample_rate, job.output_sample_rate)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground whitespace-nowrap">
-                    {mimeToLabel(file.content_type)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground whitespace-nowrap">
-                    {formatDate(file.uploaded_at)}
+                  <TableCell className="font-mono text-xs tabular-nums whitespace-nowrap">
+                    {job.amplification_ratio ? `${job.amplification_ratio.toFixed(1)}×` : "—"}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" />
-                      Complete
-                    </span>
+                    <JobStatusBadge status={job.status} />
                   </TableCell>
                 </TableRow>
               ))}
