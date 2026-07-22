@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
+  AudioLines,
   CheckCircle2,
   ChevronDown,
   FileIcon,
@@ -31,6 +33,9 @@ export interface UploadItem {
   error?: string;
   retryable?: boolean;
   metadata?: FileMetadataDetail | null;
+  /** B2 object key of the stored original, set once the upload completes.
+   *  Lets the success state deep-link into the enhancement-create flow. */
+  objectKey?: string;
 }
 
 interface UploadProgressProps {
@@ -143,6 +148,19 @@ function UploadRow({
             value={item.progress}
             className="mt-2 h-1 progress-gradient"
           />
+        )}
+        {item.status === "complete" && (
+          <div className="mt-2">
+            <Button asChild size="sm" className="h-7 gap-1 px-2 text-xs">
+              <Link
+                href={`/jobs?enhance=${encodeURIComponent(item.objectKey ?? "")}`}
+                aria-label={`Create an enhancement for ${item.file.name}`}
+              >
+                <AudioLines className="h-3.5 w-3.5" aria-hidden="true" />
+                Enhance now
+              </Link>
+            </Button>
+          </div>
         )}
         {metadata && (
           <Collapsible

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,14 +59,24 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function NewEnhancementDialog() {
-  const [open, setOpen] = useState(false);
+export function NewEnhancementDialog({
+  initialEnhanceKey,
+}: {
+  /** When set (e.g. via the /jobs?enhance=<key> deep link from the upload
+   *  success state), the dialog opens on mount with this source pre-selected. */
+  initialEnhanceKey?: string;
+}) {
+  const [open, setOpen] = useState(() => Boolean(initialEnhanceKey));
   const { data: tracks = [], isLoading } = useLibrary();
   const createJob = useCreateJob();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { inputKey: "", qualityPreset: "balanced", seed: "" },
+    defaultValues: {
+      inputKey: initialEnhanceKey ?? "",
+      qualityPreset: "balanced",
+      seed: "",
+    },
   });
 
   const onSubmit = (values: FormValues) => {
@@ -113,7 +124,18 @@ export function NewEnhancementDialog() {
           <EmptyState
             icon={AudioLines}
             title="No audio ingested yet"
-            description="Upload an MP3/WAV/OGG on the Upload page first, then enhance it here."
+            description={
+              <>
+                Upload an MP3/WAV/OGG on the{" "}
+                <Link
+                  href="/upload"
+                  className="font-medium text-primary underline underline-offset-4 hover:no-underline"
+                >
+                  Upload page
+                </Link>{" "}
+                first, then enhance it here.
+              </>
+            }
           />
         ) : (
           <Form {...form}>

@@ -17,10 +17,33 @@
 # known-unsupported MPS paths); opt in with AUDIOSR_DEVICE=mps. No GPU is ever
 # required.
 
+# --- torch stack, pinned DOWN to the last pre-torchcodec window ---------------
+# audiosr 0.0.7 declares only FLOORS for the torch stack (torch>=1.13.0,
+# torchaudio>=0.13.0, torchvision>=0.14.0), so a clean install pulls the LATEST
+# torch. That is a false-green trap (same class as the matplotlib one below):
+# modern torchaudio routes `torchaudio.load()` through `load_with_torchcodec`,
+# which HARD-REQUIRES the undeclared `torchcodec` package (itself needing system
+# FFmpeg libs). audiosr reads its input with `torchaudio.load` (see
+# audiosr/utilities/data/dataset.py), so the marquee super-resolution op crashes
+# at the audio-load step with "TorchCodec is required for load_with_torchcodec".
+# audiosr 0.0.7 predates torchcodec and expects the classic soundfile/libsndfile
+# load backend, so we pin the whole torch stack DOWN to the last window that
+# still satisfies audiosr AND loads audio via soundfile (no torchcodec, no
+# system-FFmpeg dependency). Keep the three in lockstep — torchaudio/torchvision
+# wheels pin an exact matching torch build.
+torch>=2.2,<2.3
+torchaudio>=2.2,<2.3
+torchvision>=0.17,<0.18
+
 # versatile_audio_super_resolution — the marquee model. Its own dependency pins
-# pull a compatible torch/torchaudio, transformers==4.30.2, librosa==0.9.2 and
-# numpy<=1.23.5, so we let the package drive those transitive versions.
+# also fix transformers==4.30.2, librosa==0.9.2 and numpy<=1.23.5.
 audiosr==0.0.7
 # Writing the 48 kHz 16-bit PCM WAV rendition. (Also pulled by audiosr; pinned
 # here because repo/audiosr_engine.py imports it directly.)
 soundfile>=0.12.1
+# Undeclared transitive dep of audiosr 0.0.7 — imported at module top-level in
+# audiosr/utilities/tools.py (and latent_encoder/autoencoder.py, data/add_on.py)
+# but MISSING from audiosr's own dependencies, so a clean install boots green yet
+# the super-resolution op crashes with ModuleNotFoundError at runtime. Bounded to
+# stay compatible with audiosr's numpy<=1.23.5 pin (matplotlib 3.8 pulls numpy up).
+matplotlib>=3.6,<3.8

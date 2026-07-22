@@ -51,6 +51,7 @@ on-device — no external API, no second key.
 - A GPU is never required.
 
 ## Edge Cases
+- **Torch stack is pinned pre-torchcodec** (`torch/torchaudio/torchvision 2.2.2 / 2.2.2 / 0.17.2` in `requirements-ml.txt`). audiosr 0.0.7 only declares floors, so an unpinned install pulls a modern torchaudio that routes `torchaudio.load` through `load_with_torchcodec` and crashes the marquee op with "TorchCodec is required…". Do **not** bump these without re-verifying audio load works via soundfile (no `torchcodec`, no system FFmpeg).
 - ML stack not installed (`requirements-ml.txt`) → `EngineUnavailableError` with an actionable message; the job is marked `failed`
 - Unreadable / unsupported input → error recorded on the job; nothing written to `enhanced/`
 - First run downloads the ~2 GB "basic" checkpoint from HuggingFace (keyless), then caches it

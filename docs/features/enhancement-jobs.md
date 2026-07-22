@@ -39,6 +39,8 @@ delete jobs; job state is persisted in B2.
 - **Quality preset** — a `Select`: Fast (25 steps), Balanced (50, default), High (100). Maps to `EnhancementParams` server-side; `guidance_scale=3.5` fixed.
 - **Seed** — optional integer `Input`, placeholder `42` with a "leave blank for random" description (guidance only, no autofill button). The seed used is recorded on the job.
 - A short-clip hint is shown for a fast first run. Follows `settings-form.tsx` (react-hook-form + zod + shadcn Select/FormDescription).
+- **Deep link / pre-select** — the page reads `?enhance=<originals/ key>` server-side (`app/jobs/page.tsx`) and passes it down; when present the dialog opens on mount with that source pre-selected. This backs the upload success "Enhance now" CTA.
+- **Empty state** links the words "Upload page" to `/upload` (Next `<Link>`) so a first-run user can navigate straight to ingest.
 
 ## Flow
 - Create → `queued` manifest in B2 → BackgroundTask calls `run_job`
@@ -56,6 +58,7 @@ delete jobs; job state is persisted in B2.
 - Loading: skeleton rows
 - Error: inline `ErrorState` with retry
 - Live: status badge updates via polling while queued/processing
+- In-progress liveness: while `processing`, an advancing elapsed-time counter (`components/jobs/elapsed-timer.tsx`, anchored on `updated_at`) ticks in the table row and the detail dialog, plus a "can take several minutes on CPU" stage hint in the dialog — so a long CPU run never looks frozen (no fabricated percentages)
 
 ## Verification
 - Test files: `services/api/tests/test_jobs.py`

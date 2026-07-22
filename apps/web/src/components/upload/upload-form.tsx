@@ -125,6 +125,7 @@ export function UploadForm() {
                       status: "complete",
                       progress: 100,
                       metadata: response.metadata,
+                      objectKey: response.key,
                     }
                   : i
               )

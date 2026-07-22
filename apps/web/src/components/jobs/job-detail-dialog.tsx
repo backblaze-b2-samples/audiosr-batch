@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { JobStatusBadge } from "@/components/jobs/status-badge";
+import { ElapsedTimer } from "@/components/jobs/elapsed-timer";
 import { AudioPlayer } from "@/components/jobs/audio-player";
 import { ApiError } from "@/lib/api-client";
 import { useDeleteJob, useJob, useRunJob } from "@/lib/queries";
@@ -96,12 +97,29 @@ export function JobDetailDialog({ jobId, open, onOpenChange }: JobDetailDialogPr
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-3">
               <JobStatusBadge status={job.status} />
+              {job.status === "processing" ? (
+                <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <ElapsedTimer
+                    since={job.updated_at}
+                    className="font-mono tabular-nums text-foreground"
+                  />
+                  elapsed
+                </span>
+              ) : null}
               {job.amplification_ratio ? (
                 <span className="text-sm font-semibold tabular-nums">
                   {job.amplification_ratio.toFixed(1)}× storage amplification
                 </span>
               ) : null}
             </div>
+
+            {job.status === "processing" ? (
+              <p className="text-xs text-muted-foreground">
+                Reconstructing high-frequency detail with AudioSR — this can take
+                several minutes on CPU. The status updates automatically; you can
+                close this dialog and come back.
+              </p>
+            ) : null}
 
             {job.status === "failed" && job.error ? (
               <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">

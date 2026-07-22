@@ -18,6 +18,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { JobStatusBadge } from "@/components/jobs/status-badge";
 import { NewEnhancementDialog } from "@/components/jobs/new-enhancement-dialog";
 import { JobDetailDialog } from "@/components/jobs/job-detail-dialog";
+import { ElapsedTimer } from "@/components/jobs/elapsed-timer";
 import { useJobs } from "@/lib/queries";
 import { formatDate } from "@/lib/utils";
 
@@ -30,7 +31,13 @@ function rateLabel(inRate: number | null, outRate: number | null) {
   return `${Math.round(inRate / 1000)}→${Math.round(outRate / 1000)} kHz`;
 }
 
-export function JobsTable() {
+export function JobsTable({
+  initialEnhanceKey,
+}: {
+  /** Deep-link target from the upload success CTA (/jobs?enhance=<key>):
+   *  opens the create dialog with this source pre-selected. */
+  initialEnhanceKey?: string;
+}) {
   const { data: jobs = [], isLoading, isFetching, error, refetch } = useJobs();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -60,7 +67,7 @@ export function JobsTable() {
               />
               Refresh
             </Button>
-            <NewEnhancementDialog />
+            <NewEnhancementDialog initialEnhanceKey={initialEnhanceKey} />
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -122,7 +129,15 @@ export function JobsTable() {
                       {formatDate(job.created_at)}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      <JobStatusBadge status={job.status} />
+                      <div className="flex items-center gap-2">
+                        <JobStatusBadge status={job.status} />
+                        {job.status === "processing" && (
+                          <ElapsedTimer
+                            since={job.updated_at}
+                            className="font-mono text-xs tabular-nums text-muted-foreground"
+                          />
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

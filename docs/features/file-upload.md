@@ -53,6 +53,9 @@ Everything else is rejected at the boundary. Each type has a magic-byte signatur
 ## UX States
 - Empty: dropzone with audio-only + 200 MB hint and a Collection field
 - Loading / Error / Complete / Rejected: per-file progress, retry where applicable
+- Complete rows also surface an **"Enhance now"** CTA that deep-links to
+  `/jobs?enhance=<original_key>`, opening the New Enhancement dialog with the
+  just-uploaded file pre-selected (alongside the existing "View details" toggle)
 
 ## Verification
 - Test files: `services/api/tests/test_upload_validation.py`, `test_upload_conflict.py`, `test_error_handling.py`
